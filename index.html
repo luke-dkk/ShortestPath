@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dijkstra – København</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --background: #101827;
+            --panel: #18243a;
+            --panel-light: #22324f;
+            --text: #edf4ff;
+            --muted: #a9b8d2;
+            --edge: #7183a5;
+            --node: #31527e;
+            --queue: #d59b37;
+            --current: #e05d5d;
+            --visited: #3e9a79;
+            --path: #55c2ee;
+            --button: #356db1;
+            --button-hover: #4785d0;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--text);
+            background: radial-gradient(circle at top, #203454 0, var(--background) 54%);
+        }
+
+        main {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+            padding: 28px 20px 40px;
+        }
+
+        h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 4vw, 2.5rem); }
+        .intro { margin: 0 0 22px; color: var(--muted); }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 310px;
+            gap: 18px;
+            align-items: start;
+        }
+
+        .card {
+            background: color-mix(in srgb, var(--panel) 94%, transparent);
+            border: 1px solid #2a3c5d;
+            border-radius: 16px;
+            box-shadow: 0 16px 40px #050a1429;
+        }
+
+        .graph-card { padding: 12px; overflow: hidden; }
+        svg { display: block; width: 100%; height: auto; min-height: 500px; }
+
+        .edge-line {
+            stroke: var(--edge);
+            stroke-width: 2.5;
+            opacity: .85;
+            transition: stroke .2s, stroke-width .2s, opacity .2s;
+        }
+
+        .edge-line.examined { stroke: var(--queue); opacity: 1; }
+        .edge-line.path { stroke: var(--path); stroke-width: 6; opacity: 1; }
+
+        .edge-label {
+            fill: var(--muted);
+            font-size: 13px;
+            font-weight: 700;
+            paint-order: stroke;
+            stroke: var(--panel);
+            stroke-width: 5px;
+            stroke-linejoin: round;
+        }
+
+        .node-circle {
+            fill: var(--node);
+            stroke: #b8d4ff;
+            stroke-width: 2.5;
+            transition: fill .2s, stroke .2s, transform .2s;
+        }
+
+        .node.queue .node-circle { fill: var(--queue); }
+        .node.visited .node-circle { fill: var(--visited); }
+        .node.current .node-circle { fill: var(--current); stroke: #ffd0d0; stroke-width: 4; }
+        .node.path .node-circle { fill: var(--path); stroke: white; stroke-width: 4; }
+        .node-label { fill: white; font-size: 13px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+        .controls-card { padding: 20px; }
+        .controls { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 18px; }
+        button {
+            border: 0;
+            border-radius: 9px;
+            color: white;
+            background: var(--button);
+            padding: 10px 13px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) { background: var(--button-hover); }
+        button:disabled { cursor: not-allowed; opacity: .45; }
+
+        h2 { margin: 0 0 9px; font-size: 1.05rem; }
+        .status {
+            min-height: 72px;
+            margin-bottom: 18px;
+            padding: 12px;
+            border-radius: 10px;
+            color: var(--muted);
+            background: #0d1627;
+            line-height: 1.45;
+        }
+        .status strong { color: var(--text); }
+
+        .distance-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 0; }
+        .distance-row { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+        .distance-row strong { color: var(--text); }
+
+        .legend { display: grid; gap: 7px; margin-top: 20px; color: var(--muted); font-size: .9rem; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 13px; height: 13px; border-radius: 50%; border: 1px solid #b8d4ff; }
+        .dot.unvisited { background: var(--node); }
+        .dot.queue { background: var(--queue); }
+        .dot.visited { background: var(--visited); }
+        .dot.current { background: var(--current); }
+        .dot.path { background: var(--path); }
+
+        .route {
+            margin: 18px 0 0;
+            padding: 12px;
+            border-radius: 10px;
+            background: #0d1627;
+            color: var(--path);
+            line-height: 1.5;
+        }
+
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+            svg { min-height: auto; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Dijkstra på Københavns områder</h1>
+    <p class="intro">Følg algoritmen fra <strong>Start</strong> til <strong>Goal</strong> ét skridt ad gangen.</p>
+
+    <section class="layout">
+        <div class="card graph-card">
+            <svg id="graph" viewBox="0 0 900 610" role="img" aria-label="Graf over områder og afstande">
+                <defs>
+                    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#7183a5"></path>
+                    </marker>
+                    <marker id="arrow-examined" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#d59b37"></path>
+                    </marker>
+                    <marker id="arrow-path" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#55c2ee"></path>
+                    </marker>
+                </defs>
+                <g id="edges"></g>
+                <g id="nodes"></g>
+            </svg>
+        </div>
+
+        <aside class="card controls-card">
+            <div class="controls">
+                <button id="nextButton">Næste skridt</button>
+                <button id="playButton">Afspil</button>
+                <button id="pauseButton" disabled>Pause</button>
+                <button id="resetButton">Nulstil</button>
+            </div>
+
+            <h2>Status</h2>
+            <div id="status" class="status">Klar til at starte fra <strong>Start</strong>.</div>
+
+            <h2>Afstande</h2>
+            <div id="distances" class="distance-list"></div>
+
+            <div id="route" class="route" hidden></div>
+
+            <div class="legend" aria-label="Forklaring">
+                <div class="legend-item"><span class="dot unvisited"></span> Ikke besøgt</div>
+                <div class="legend-item"><span class="dot queue"></span> I køen</div>
+                <div class="legend-item"><span class="dot visited"></span> Besøgt</div>
+                <div class="legend-item"><span class="dot current"></span> Aktuel node</div>
+                <div class="legend-item"><span class="dot path"></span> Korteste rute</div>
+            </div>
+        </aside>
+    </section>
+</main>
+
+<script>
+    const graphData = {
+        start: { label: "Start", x: 75, y: 305 },
+        indreBy: { label: "Indre By", x: 190, y: 305 },
+        osterbro: { label: "Østerbro", x: 320, y: 145 },
+        norrebro: { label: "Nørrebro", x: 320, y: 305 },
+        nordvest: { label: "Nordvest", x: 470, y: 145 },
+        vanlose: { label: "Vanløse", x: 610, y: 305 },
+        valby: { label: "Valby", x: 730, y: 305 },
+        vesterbro: { label: "Vesterbro", x: 610, y: 475 },
+        amager: { label: "Amager", x: 760, y: 475 },
+        goal: { label: "Goal", x: 855, y: 475 }
+    };
+
+    const edges = [
+        ["start", "indreBy", 2],
+        ["indreBy", "osterbro", 5],
+        ["indreBy", "norrebro", 7],
+        ["osterbro", "nordvest", 3],
+        ["osterbro", "indreBy", 5],
+        ["norrebro", "indreBy", 7],
+        ["norrebro", "nordvest", 4],
+        ["nordvest", "osterbro", 3],
+        ["nordvest", "norrebro", 4],
+        ["nordvest", "vanlose", 6],
+        ["vanlose", "valby", 6],
+        ["valby", "vanlose", 6],
+        ["valby", "vesterbro", 4],
+        ["vesterbro", "valby", 4],
+        ["vesterbro", "amager", 8],
+        ["amager", "vesterbro", 8],
+        ["amager", "goal", 3]
+    ];
+
+    const nodeKeys = Object.keys(graphData);
+    const adjacency = Object.fromEntries(nodeKeys.map(key => [key, []]));
+    edges.forEach(([from, to, weight]) => adjacency[from].push({ to, weight }));
+
+    const state = {
+        distances: {},
+        previous: {},
+        queue: [],
+        visited: new Set(),
+        current: null,
+        examinedEdges: new Set(),
+        finished: false,
+        timer: null
+    };
+
+    const graph = document.getElementById("graph");
+    const edgesGroup = document.getElementById("edges");
+    const nodesGroup = document.getElementById("nodes");
+    const statusElement = document.getElementById("status");
+    const distancesElement = document.getElementById("distances");
+    const routeElement = document.getElementById("route");
+    const nextButton = document.getElementById("nextButton");
+    const playButton = document.getElementById("playButton");
+    const pauseButton = document.getElementById("pauseButton");
+    const resetButton = document.getElementById("resetButton");
+
+    function svgElement(name, attributes) {
+        const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+        Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+        return element;
+    }
+
+    function renderGraph() {
+        edges.forEach(([from, to, weight], index) => {
+            const a = graphData[from];
+            const b = graphData[to];
+            const line = svgElement("line", {
+                x1: a.x, y1: a.y, x2: b.x, y2: b.y,
+                class: "edge-line", "data-edge": index,
+                "marker-end": "url(#arrow)"
+            });
+            edgesGroup.appendChild(line);
+
+            const fraction = .5;
+            const label = svgElement("text", {
+                x: a.x + (b.x - a.x) * fraction,
+                y: a.y + (b.y - a.y) * fraction - 7,
+                class: "edge-label", "text-anchor": "middle"
+            });
+            label.textContent = weight;
+            edgesGroup.appendChild(label);
+        });
+
+        nodeKeys.forEach(key => {
+            const node = graphData[key];
+            const group = svgElement("g", { class: "node", "data-node": key });
+            group.appendChild(svgElement("circle", { cx: node.x, cy: node.y, r: 31, class: "node-circle" }));
+            const label = svgElement("text", { x: node.x, y: node.y, class: "node-label" });
+            label.textContent = node.label;
+            group.appendChild(label);
+            nodesGroup.appendChild(group);
+        });
+    }
+
+    function reset() {
+        stopPlaying();
+        state.distances = Object.fromEntries(nodeKeys.map(key => [key, Infinity]));
+        state.previous = {};
+        state.queue = [{ key: "start", distance: 0 }];
+        state.distances.start = 0;
+        state.visited = new Set();
+        state.current = null;
+        state.examinedEdges = new Set();
+        state.finished = false;
+
+        // Fjern alle tidligere visuelle statusser fra noder og kanter.
+        document.querySelectorAll(".node").forEach(node => {
+            node.classList.remove("queue", "visited", "current", "path");
+        });
+        document.querySelectorAll(".edge-line").forEach(edge => {
+            edge.classList.remove("examined", "path");
+            edge.setAttribute("marker-end", "url(#arrow)");
+        });
+
+        routeElement.hidden = true;
+        statusElement.innerHTML = 'Klar til at starte fra <strong>Start</strong>.';
+        updateView();
+    }
+
+    function step() {
+        if (state.finished) return;
+
+        state.current = null;
+        let next;
+        do {
+            next = state.queue.shift();
+        } while (next && state.visited.has(next.key));
+
+        if (!next) {
+            finish(false);
+            return;
+        }
+
+        state.current = next.key;
+        if (next.key === "goal") {
+            state.visited.add(next.key);
+            finish(true);
+            return;
+        }
+
+        state.visited.add(next.key);
+        const updates = [];
+        adjacency[next.key].forEach(({ to, weight }) => {
+            const edgeIndex = edges.findIndex(([from, target]) => from === next.key && target === to);
+            state.examinedEdges.add(edgeIndex);
+            if (state.visited.has(to)) return;
+
+            const candidate = next.distance + weight;
+            if (candidate < state.distances[to]) {
+                state.distances[to] = candidate;
+                state.previous[to] = next.key;
+                state.queue.push({ key: to, distance: candidate });
+                updates.push(`${graphData[to].label} = ${candidate}`);
+            }
+        });
+        state.queue.sort((a, b) => a.distance - b.distance);
+
+        const updateText = updates.length ? ` Opdaterede: ${updates.join(", ")}.` : " Ingen afstande blev forbedret.";
+        statusElement.innerHTML = `<strong>Besøger ${graphData[next.key].label}</strong> med afstand ${next.distance}.${updateText}`;
+        updateView();
+    }
+
+    function finish(success) {
+        state.finished = true;
+        stopPlaying();
+        if (!success) {
+            statusElement.textContent = "Ingen sti fundet til Goal.";
+            updateView();
+            return;
+        }
+
+        const path = buildPath();
+        path.forEach(key => document.querySelector(`[data-node="${key}"]`).classList.add("path"));
+        edges.forEach(([from, to], index) => {
+            if (path.includes(from) && path.includes(to) && path.indexOf(to) === path.indexOf(from) + 1) {
+                document.querySelector(`[data-edge="${index}"]`).classList.add("path");
+                document.querySelector(`[data-edge="${index}"]`).setAttribute("marker-end", "url(#arrow-path)");
+            }
+        });
+        routeElement.hidden = false;
+        routeElement.innerHTML = `<strong>Korteste rute (${state.distances.goal}):</strong><br>${path.map(key => graphData[key].label).join(" → ")}`;
+        statusElement.innerHTML = `<strong>Færdig!</strong> Goal blev nået med en samlet afstand på ${state.distances.goal}.`;
+        updateView();
+    }
+
+    function buildPath() {
+        const path = [];
+        let current = "goal";
+        while (current) {
+            path.unshift(current);
+            current = state.previous[current];
+        }
+        return path;
+    }
+
+    function updateView() {
+        document.querySelectorAll(".node").forEach(element => {
+            const key = element.dataset.node;
+            element.classList.remove("queue", "visited", "current");
+            if (state.queue.some(item => item.key === key)) element.classList.add("queue");
+            if (state.visited.has(key)) element.classList.add("visited");
+            if (state.current === key && !state.finished) element.classList.add("current");
+        });
+
+        document.querySelectorAll(".edge-line").forEach((element, index) => {
+            element.classList.toggle("examined", state.examinedEdges.has(index));
+            if (state.examinedEdges.has(index)) element.setAttribute("marker-end", "url(#arrow-examined)");
+        });
+
+        distancesElement.innerHTML = nodeKeys.map(key => {
+            const value = state.distances[key] === Infinity ? "∞" : state.distances[key];
+            return `<div class="distance-row"><span>${graphData[key].label}</span><strong>${value}</strong></div>`;
+        }).join("");
+
+        nextButton.disabled = state.finished;
+        playButton.disabled = state.finished || Boolean(state.timer);
+        pauseButton.disabled = !state.timer;
+    }
+
+    function startPlaying() {
+        if (state.finished || state.timer) return;
+        state.timer = setInterval(() => {
+            step();
+            if (state.finished) stopPlaying();
+        }, 800);
+        updateView();
+    }
+
+    function stopPlaying() {
+        if (state.timer) clearInterval(state.timer);
+        state.timer = null;
+        updateView();
+    }
+
+    nextButton.addEventListener("click", step);
+    playButton.addEventListener("click", startPlaying);
+    pauseButton.addEventListener("click", stopPlaying);
+    resetButton.addEventListener("click", reset);
+
+    renderGraph();
+    reset();
+</script>
+</body>
+</html>

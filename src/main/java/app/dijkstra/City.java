@@ -1,4 +1,4 @@
-package app.dijkstra;
+package dijkstra;
 
 import java.util.HashMap;
 import java.util.Map;
